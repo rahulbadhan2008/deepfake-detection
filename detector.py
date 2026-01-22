@@ -95,6 +95,10 @@ def analyze_gradient_pca(gradient_x: np.ndarray, gradient_y: np.ndarray) -> dict
     # Project data onto first principal component
     projection = centered @ eigenvectors[:, 0]
     
+    # Reshape projection back to 2D for visualization
+    h, w = gradient_x.shape
+    projection_map = projection.reshape(h, w)
+    
     # High-frequency instability metric (kurtosis of projection)
     projection_std = np.std(projection)
     projection_mean = np.mean(projection)
@@ -122,13 +126,17 @@ def analyze_gradient_pca(gradient_x: np.ndarray, gradient_y: np.ndarray) -> dict
         'magnitude_mean': magnitude_mean,
         'magnitude_std': magnitude_std,
         'eigenvalues': eigenvalues,
-        'total_variance': total_variance
+        'total_variance': total_variance,
+        'projection_map': projection_map,
+        'gradient_x': gradient_x,
+        'gradient_y': gradient_y
     }
 
 
 def detect_synthetic_image(
     image_input: Union[str, np.ndarray, Image.Image],
-    return_details: bool = False
+    return_details: bool = False,
+    thresholds: dict = None
 ) -> Union[str, Tuple[str, dict]]:
     """
     Detect whether an image is real or diffusion-generated using gradient field PCA analysis.
@@ -141,6 +149,7 @@ def detect_synthetic_image(
     Args:
         image_input: Input image as file path (str), numpy array (H,W,3), or PIL Image
         return_details: If True, return detailed analysis metrics along with classification
+        thresholds: Optional dictionary to override default detection thresholds
         
     Returns:
         If return_details is False:
@@ -198,32 +207,35 @@ def detect_synthetic_image(
     # These thresholds are derived from the characteristic differences between
     # real photos (coherent gradients) and diffusion outputs (unstable high-freq patterns)
     
+    # Classification decision
+    # Default thresholds or overrides
+    th = {
+        'cv': 1.8,
+        'kurtosis': 4.5,
+        'hf': 0.35,
+        'ev_low': 1.5,
+        'ev_high': 50.0
+    }
+    if thresholds:
+        th.update(thresholds)
+    
     # Scoring system based on multiple metrics
     score = 0.0
     
     # Metric 1: Coefficient of variation
-    # Diffusion images tend to have higher CV due to irregular gradient patterns
-    cv_threshold = 1.8
-    if metrics['coeff_variation'] > cv_threshold:
+    if metrics['coeff_variation'] > th['cv']:
         score += 0.25
     
     # Metric 2: Kurtosis of PCA projection
-    # Diffusion images show heavier tails (higher kurtosis) from denoising artifacts
-    kurtosis_threshold = 4.5
-    if metrics['kurtosis'] > kurtosis_threshold:
+    if metrics['kurtosis'] > th['kurtosis']:
         score += 0.25
     
     # Metric 3: High-frequency energy ratio
-    # Diffusion images often have more concentrated high-frequency components
-    hf_threshold = 0.35
-    if metrics['high_freq_ratio'] > hf_threshold:
+    if metrics['high_freq_ratio'] > th['hf']:
         score += 0.25
     
     # Metric 4: Eigenvalue ratio (gradient field anisotropy)
-    # Real images tend to have more anisotropic gradients due to physical lighting
-    ev_threshold_low = 1.5
-    ev_threshold_high = 50.0
-    if metrics['eigenvalue_ratio'] < ev_threshold_low or metrics['eigenvalue_ratio'] > ev_threshold_high:
+    if metrics['eigenvalue_ratio'] < th['ev_low'] or metrics['eigenvalue_ratio'] > th['ev_high']:
         score += 0.25
     
     # Classification decision
@@ -239,11 +251,11 @@ def detect_synthetic_image(
             'detection_score': score,
             'confidence_score': abs(score - 0.5) * 2,  # 0 to 1 confidence
             'thresholds': {
-                'cv_threshold': cv_threshold,
-                'kurtosis_threshold': kurtosis_threshold,
-                'hf_threshold': hf_threshold,
-                'ev_threshold_low': ev_threshold_low,
-                'ev_threshold_high': ev_threshold_high,
+                'cv_threshold': th['cv'],
+                'kurtosis_threshold': th['kurtosis'],
+                'hf_threshold': th['hf'],
+                'ev_threshold_low': th['ev_low'],
+                'ev_threshold_high': th['ev_high'],
                 'classification_threshold': classification_threshold
             },
             'image_dimensions': image_array.shape[:2]

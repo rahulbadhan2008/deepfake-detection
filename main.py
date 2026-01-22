@@ -9,7 +9,14 @@ Command-line interface for detecting AI-generated images using gradient field an
 import argparse
 import sys
 import os
+import numpy as np
 from detector import detect_synthetic_image, batch_detect
+
+try:
+    import matplotlib.pyplot as plt
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
 
 
 def print_banner():
@@ -43,7 +50,59 @@ def format_result(classification: str, details: dict = None) -> str:
     return result
 
 
-def analyze_single(image_path: str, verbose: bool = True):
+def save_visualization(image_path: str, details: dict, output_path: str = None):
+    """Generate and save analysis plots."""
+    if not HAS_MATPLOTLIB:
+        print("⚠️  Matplotlib not installed. Skipping visualization.")
+        return
+
+    if output_path is None:
+        base, _ = os.path.splitext(image_path)
+        output_path = f"{base}_analysis.png"
+
+    try:
+        # Create figure with 3 subplots
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        
+        # 1. Original Image (Load again for display)
+        from PIL import Image
+        img = Image.open(image_path).convert('RGB')
+        axes[0].imshow(img)
+        axes[0].set_title("Original Image")
+        axes[0].axis('off')
+        
+        # 2. Gradient Magnitude
+        gradient_mag = np.sqrt(details['gradient_x']**2 + details['gradient_y']**2)
+        im2 = axes[1].imshow(gradient_mag, cmap='inferno')
+        axes[1].set_title("Gradient Magnitude")
+        axes[1].axis('off')
+        plt.colorbar(im2, ax=axes[1], fraction=0.046, pad=0.04)
+        
+        # 3. PCA Projection (The "Artifact" Map)
+        # We normalize specific ranges to highlight outliers
+        proj_map = details['projection_map']
+        vmax = np.percentile(np.abs(proj_map), 98)
+        im3 = axes[2].imshow(proj_map, cmap='RdBu_r', vmin=-vmax, vmax=vmax)
+        axes[2].set_title("PCA Projection (Structural Instability)")
+        axes[2].axis('off')
+        plt.colorbar(im3, ax=axes[2], fraction=0.046, pad=0.04)
+        
+        # Add a super title with classification and score
+        score = details['detection_score']
+        classification = "Diffusion Generated" if score >= 0.5 else "Real"
+        plt.suptitle(f"Result: {classification} (Score: {score:.2f})", fontsize=16)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        
+        print(f"   📊 Visualization saved to: {output_path}")
+        
+    except Exception as e:
+        print(f"❌ Error saving visualization: {e}")
+
+
+def analyze_single(image_path: str, verbose: bool = True, visualize: bool = False, thresholds: dict = None):
     """Analyze a single image."""
     if not os.path.exists(image_path):
         print(f"❌ Error: File not found: {image_path}")
@@ -54,7 +113,7 @@ def analyze_single(image_path: str, verbose: bool = True):
         print("-" * 50)
     
     try:
-        classification, details = detect_synthetic_image(image_path, return_details=True)
+        classification, details = detect_synthetic_image(image_path, return_details=True, thresholds=thresholds)
         
         print(f"\n🎯 Result: {format_result(classification, details)}")
         
@@ -66,11 +125,16 @@ def analyze_single(image_path: str, verbose: bool = True):
             print(f"   • Eigenvalue Ratio: {details['eigenvalue_ratio']:.4f}")
             print(f"   • Total Variance: {details['total_variance']:.6f}")
             print(f"   • Image Size: {details['image_dimensions'][0]}x{details['image_dimensions'][1]}")
+            
+        if visualize:
+            save_visualization(image_path, details)
         
         return classification, details
         
     except Exception as e:
         print(f"❌ Error analyzing image: {e}")
+        # import traceback
+        # traceback.print_exc()
         sys.exit(1)
 
 
@@ -122,8 +186,8 @@ def main():
 Examples:
   python main.py image.jpg                  Analyze a single image
   python main.py --dir ./photos             Analyze all images in directory
-  python main.py image.png --verbose        Show detailed metrics
-  python main.py --test                     Run self-test
+  python main.py image.png --visualize      Generate analysis charts
+  python main.py image.jpg --th-cv 2.0      Set custom Coeff of Variation threshold
         """
     )
     
@@ -152,10 +216,23 @@ Examples:
     )
     
     parser.add_argument(
+        '--visualize', '-vis',
+        action='store_true',
+        help='Generate analysis visualization images'
+    )
+    
+    parser.add_argument(
         '--test',
         action='store_true',
         help='Run self-test to verify installation'
     )
+
+    # Threshold arguments
+    parser.add_argument('--th-cv', type=float, help='Threshold for Coefficient of Variation (default: 1.8)')
+    parser.add_argument('--th-kurt', type=float, help='Threshold for Kurtosis (default: 4.5)')
+    parser.add_argument('--th-hf', type=float, help='Threshold for High-Freq Ratio (default: 0.35)')
+    parser.add_argument('--th-ev-low', type=float, help='Threshold for Eigenvalue Ratio Low (default: 1.5)')
+    parser.add_argument('--th-ev-high', type=float, help='Threshold for Eigenvalue Ratio High (default: 50.0)')
     
     args = parser.parse_args()
     
@@ -169,6 +246,17 @@ Examples:
         _self_test()
         return
     
+    # Collect thresholds
+    thresholds = {}
+    if args.th_cv is not None: thresholds['cv'] = args.th_cv
+    if args.th_kurt is not None: thresholds['kurtosis'] = args.th_kurt
+    if args.th_hf is not None: thresholds['hf'] = args.th_hf
+    if args.th_ev_low is not None: thresholds['ev_low'] = args.th_ev_low
+    if args.th_ev_high is not None: thresholds['ev_high'] = args.th_ev_high
+    
+    if not thresholds:
+        thresholds = None
+    
     # Handle directory mode
     if args.dir:
         analyze_directory(args.dir)
@@ -176,7 +264,9 @@ Examples:
     
     # Handle single image
     if args.image:
-        analyze_single(args.image, verbose=not args.quiet)
+        # Auto-enable visualization for single image if matplotlib is available and not quiet
+        visualize = args.visualize
+        analyze_single(args.image, verbose=not args.quiet, visualize=visualize, thresholds=thresholds)
         return
     
     # No input provided

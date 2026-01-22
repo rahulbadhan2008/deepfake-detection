@@ -10,6 +10,18 @@ This tool implements a physics-based approach to image forensics. It assumes:
 
 By projecting image gradients into a lower-dimensional space using PCA, we can identify these structural anomalies without training complex machine learning models.
 
+## 🧠 How it Works
+
+The detector uses **Luminance-Gradient PCA Analysis**.
+
+1.  **Convert to Luminance**: Strip color to focus on structure.
+2.  **Compute Gradients**: Measure pixel-to-pixel changes.
+3.  **Analyze Covariance**: Use PCA to find the "shape" of the gradient field.
+
+Real photos have coherent, isotropic gradient fields (from physical light). Diffusion models often leave specific anisotropic "fingerprints" in the noise.
+
+👉 **[Read the full logical breakdown and diagrams in ARCHITECTURE.md](./ARCHITECTURE.md)**
+
 ## 📦 Installation
 
 1.  **Clone or Download** this repository.
@@ -59,6 +71,29 @@ python main.py --dir ./my_images
 - `--verbose, -v`: Show detailed PCA metrics (ON by default for single images).
 - `--quiet, -q`: Output only the classification result (useful for scripts).
 - `--test`: Run a built-in self-test to verify installation.
+
+## 📊 Visualization
+You can generate visual charts of the analysis (Gradient Map, PCA Projection) using the `--visualize` flag.
+```bash
+python main.py image.jpg --visualize
+```
+This saves an image named `image_analysis.png` in the same folder.
+
+## ⚙️ Configuration
+You can fine-tune the detection sensitivity by adjusting the internal scoring thresholds via CLI arguments:
+
+| Argument | Default | Description |
+| :--- | :--- | :--- |
+| `--th-cv` | 1.8 | Coefficient of Variation Threshold |
+| `--th-kurt` | 4.5 | Kurtosis Threshold |
+| `--th-hf` | 0.35 | High-Frequency Energy Ratio Threshold |
+| `--th-ev-low` | 1.5 | Eigenvalue Ratio Lower Bound |
+| `--th-ev-high` | 50.0 | Eigenvalue Ratio Upper Bound |
+
+**Example:**
+```bash
+python main.py image.jpg --th-cv 2.0 --th-kurt 5.0
+```
 
 ## 🔧 Troubleshooting
 

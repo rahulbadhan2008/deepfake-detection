@@ -80,6 +80,8 @@ We extract specific features that separate Real from Fake:
 | **High-Freq Ratio** | Balanced | **Concentrated** (Pixel-level noise artifacts) |
 | **Eigenvalue Ratio** | Anisotropic | **Mixed** (Often overly isotropic or oddly skewed) |
 
+> **Note:** These thresholds (defaults: CV=1.8, Kurtosis=4.5, etc.) are tunable. The system allows runtime overrides via the CLI to adapt to different image datasets.
+
 ## 📂 File Structure
 
 *   `main.py`: **Entry Point**. Handles CLI arguments, file I/O, and user display.
