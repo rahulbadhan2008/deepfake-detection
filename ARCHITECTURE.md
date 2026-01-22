@@ -80,7 +80,7 @@ We extract specific features that separate Real from Fake:
 | **High-Freq Ratio** | Balanced | **Concentrated** (Pixel-level noise artifacts) |
 | **Eigenvalue Ratio** | Anisotropic | **Mixed** (Often overly isotropic or oddly skewed) |
 
-> **Note:** These thresholds (defaults: CV=1.8, Kurtosis=4.5, etc.) are tunable. The system allows runtime overrides via the CLI to adapt to different image datasets.
+> **Note:** The scoring system is **Weighted**. Structural metrics (Eigenvalue Ratio, CV) have higher priority than Noise metrics (Kurtosis, HF Ratio). This prevents noisy real photos (e.g., high ISO) from being misclassified as fake.
 
 ## 📂 File Structure
 

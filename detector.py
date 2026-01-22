@@ -209,34 +209,41 @@ def detect_synthetic_image(
     
     # Classification decision
     # Default thresholds or overrides
+    # TUNED FOR PRODUCTION: Relaxed noise thresholds to avoid false positives on camera grain
     th = {
         'cv': 1.8,
-        'kurtosis': 4.5,
-        'hf': 0.35,
+        'kurtosis': 10.0,       # Relaxed from 4.5
+        'hf': 0.45,             # Relaxed from 0.35
         'ev_low': 1.5,
         'ev_high': 50.0
     }
     if thresholds:
         th.update(thresholds)
     
-    # Scoring system based on multiple metrics
+    # Scoring system based on WEIGHTED metrics (Total = 1.0)
+    # Priority: Structure (Physics) > Noise (Pixel Stats)
     score = 0.0
     
-    # Metric 1: Coefficient of variation
+    # Metric 1: Coefficient of Variation (Weight: 0.20)
+    # Global variance consistency
     if metrics['coeff_variation'] > th['cv']:
-        score += 0.25
+        score += 0.20
     
-    # Metric 2: Kurtosis of PCA projection
+    # Metric 2: Kurtosis of PCA projection (Weight: 0.20)
+    # Sensitive to noise - reduced weight
     if metrics['kurtosis'] > th['kurtosis']:
-        score += 0.25
+        score += 0.20
     
-    # Metric 3: High-frequency energy ratio
+    # Metric 3: High-frequency energy ratio (Weight: 0.20)
+    # Sensitive to ISO/Sharpening - reduced weight
     if metrics['high_freq_ratio'] > th['hf']:
-        score += 0.25
+        score += 0.20
     
-    # Metric 4: Eigenvalue ratio (gradient field anisotropy)
+    # Metric 4: Eigenvalue Ratio (Weight: 0.40)
+    # ANISOTROPY: The strongest indicator of physical lighting.
+    # If this is normal, the image is very likely real, regardless of noise.
     if metrics['eigenvalue_ratio'] < th['ev_low'] or metrics['eigenvalue_ratio'] > th['ev_high']:
-        score += 0.25
+        score += 0.40
     
     # Classification decision
     classification_threshold = 0.5

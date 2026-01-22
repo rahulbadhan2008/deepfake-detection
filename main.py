@@ -244,8 +244,8 @@ Examples:
 
     # Threshold arguments
     parser.add_argument('--th-cv', type=float, help='Threshold for Coefficient of Variation (default: 1.8)')
-    parser.add_argument('--th-kurt', type=float, help='Threshold for Kurtosis (default: 4.5)')
-    parser.add_argument('--th-hf', type=float, help='Threshold for High-Freq Ratio (default: 0.35)')
+    parser.add_argument('--th-kurt', type=float, help='Threshold for Kurtosis (default: 10.0)')
+    parser.add_argument('--th-hf', type=float, help='Threshold for High-Freq Ratio (default: 0.45)')
     parser.add_argument('--th-ev-low', type=float, help='Threshold for Eigenvalue Ratio Low (default: 1.5)')
     parser.add_argument('--th-ev-high', type=float, help='Threshold for Eigenvalue Ratio High (default: 50.0)')
     

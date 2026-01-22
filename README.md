@@ -85,8 +85,8 @@ You can fine-tune the detection sensitivity by adjusting the internal scoring th
 | Argument | Default | Description |
 | :--- | :--- | :--- |
 | `--th-cv` | 1.8 | Coefficient of Variation Threshold |
-| `--th-kurt` | 4.5 | Kurtosis Threshold |
-| `--th-hf` | 0.35 | High-Frequency Energy Ratio Threshold |
+| `--th-kurt` | 10.0 | Kurtosis Threshold (Higher = more tolerance for noise) |
+| `--th-hf` | 0.45 | High-Frequency Energy Ratio Threshold |
 | `--th-ev-low` | 1.5 | Eigenvalue Ratio Lower Bound |
 | `--th-ev-high` | 50.0 | Eigenvalue Ratio Upper Bound |
 
