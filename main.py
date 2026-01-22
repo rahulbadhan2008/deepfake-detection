@@ -30,7 +30,7 @@ def print_banner():
     print(banner)
 
 
-def format_result(classification: str, details: dict = None) -> str:
+def format_result(classification, details=None):
     """Format detection result for display."""
     if classification == "Real":
         icon = "✅"
@@ -50,7 +50,7 @@ def format_result(classification: str, details: dict = None) -> str:
     return result
 
 
-def save_visualization(image_path: str, details: dict, output_path: str = None):
+def save_visualization(image_path, details, output_path=None):
     """Generate and save analysis plots."""
     if not HAS_MATPLOTLIB:
         print("⚠️  Matplotlib not installed. Skipping visualization.")
@@ -71,19 +71,29 @@ def save_visualization(image_path: str, details: dict, output_path: str = None):
         axes[0].set_title("Original Image")
         axes[0].axis('off')
         
-        # 2. Gradient Magnitude
-        gradient_mag = np.sqrt(details['gradient_x']**2 + details['gradient_y']**2)
-        im2 = axes[1].imshow(gradient_mag, cmap='inferno')
-        axes[1].set_title("Gradient Magnitude")
+        # 2. Gradient Relief (Embossed effect like the user's reference)
+        # Combine Gx and Gy to create a lighting effect (e.g., light from top-left)
+        # Normalizing to 0-1 range for display, centered at 0.5
+        gx = details['gradient_x']
+        gy = details['gradient_y']
+        
+        # Simple relief: Gx + Gy
+        relief = gx + gy
+        
+        # Normalize robustly
+        vmax = np.percentile(np.abs(relief), 98)
+        relief_norm = np.clip(relief / (vmax + 1e-10), -1, 1) * 0.5 + 0.5
+        
+        axes[1].imshow(relief_norm, cmap='gray')
+        axes[1].set_title("Luminance Gradient Field (Relief)")
         axes[1].axis('off')
-        plt.colorbar(im2, ax=axes[1], fraction=0.046, pad=0.04)
         
         # 3. PCA Projection (The "Artifact" Map)
         # We normalize specific ranges to highlight outliers
         proj_map = details['projection_map']
-        vmax = np.percentile(np.abs(proj_map), 98)
+        vmax = np.percentile(np.abs(proj_map), 99) # Slightly tighter clamp
         im3 = axes[2].imshow(proj_map, cmap='RdBu_r', vmin=-vmax, vmax=vmax)
-        axes[2].set_title("PCA Projection (Structural Instability)")
+        axes[2].set_title("PCA Projection (Structural Anomalies)")
         axes[2].axis('off')
         plt.colorbar(im3, ax=axes[2], fraction=0.046, pad=0.04)
         
@@ -102,7 +112,7 @@ def save_visualization(image_path: str, details: dict, output_path: str = None):
         print(f"❌ Error saving visualization: {e}")
 
 
-def analyze_single(image_path: str, verbose: bool = True, visualize: bool = False, thresholds: dict = None):
+def analyze_single(image_path, verbose=True, visualize=False, thresholds=None):
     """Analyze a single image."""
     if not os.path.exists(image_path):
         print(f"❌ Error: File not found: {image_path}")
@@ -138,7 +148,7 @@ def analyze_single(image_path: str, verbose: bool = True, visualize: bool = Fals
         sys.exit(1)
 
 
-def analyze_directory(dir_path: str, extensions: list = None):
+def analyze_directory(dir_path, extensions=None):
     """Analyze all images in a directory."""
     if extensions is None:
         extensions = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff']
@@ -265,7 +275,7 @@ Examples:
     # Handle single image
     if args.image:
         # Auto-enable visualization for single image if matplotlib is available and not quiet
-        visualize = args.visualize
+        visualize = True if args.visualize or not args.quiet else False
         analyze_single(args.image, verbose=not args.quiet, visualize=visualize, thresholds=thresholds)
         return
     
