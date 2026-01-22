@@ -139,6 +139,14 @@ def analyze_single(image_path, verbose=True, visualize=False, thresholds=None):
             print(f"   • High-Freq Ratio: {details['high_freq_ratio']:.4f}")
             print(f"   • Eigenvalue Ratio: {details['eigenvalue_ratio']:.4f}")
             print(f"   • Total Variance: {details['total_variance']:.6f}")
+            
+            meta = details.get('metadata', {})
+            print(f"   • Metadata Check: {meta.get('metadata_desc', 'N/A')}")
+            if meta.get('camera') != "Unknown":
+                print(f"     -> Camera: {meta['camera']}")
+            if meta.get('software') != "Unknown":
+                print(f"     -> Software: {meta['software']}")
+                
             print(f"   • Image Size: {details['image_dimensions'][0]}x{details['image_dimensions'][1]}")
             
         if visualize:
@@ -153,7 +161,7 @@ def analyze_single(image_path, verbose=True, visualize=False, thresholds=None):
         sys.exit(1)
 
 
-def analyze_directory(dir_path, extensions=None):
+def analyze_directory(dir_path, extensions=None, visualize=False, thresholds=None):
     """Analyze all images in a directory."""
     if extensions is None:
         extensions = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff']
@@ -174,23 +182,61 @@ def analyze_directory(dir_path, extensions=None):
         return
     
     print(f"\n📁 Found {len(image_files)} images in: {dir_path}")
-    print("-" * 60)
+    print(f"{'Filename':<25} | {'Result':<10} | {'Score':<5} | {'Kurt':<5} | {'CV':<5} | {'HF':<5} | {'EV':<5} | {'Metadata':<20}")
+    print("-" * 115)
     
-    results = batch_detect(image_files, verbose=True)
+    results = []
+    real_count = 0
+    synthetic_count = 0
+    error_count = 0
     
-    # Summary
-    real_count = sum(1 for _, cls, _ in results if cls == "Real")
-    synthetic_count = sum(1 for _, cls, _ in results if cls == "Diffusion Generated")
-    error_count = sum(1 for _, cls, _ in results if cls == "Error")
-    
-    print("\n" + "=" * 60)
+    for i, path in enumerate(image_files):
+        filename = os.path.basename(path)
+        # Truncate filename if too long
+        fname_display = (filename[:22] + '..') if len(filename) > 24 else filename
+        
+        try:
+            classification, details = detect_synthetic_image(path, return_details=True, thresholds=thresholds)
+            
+            # Store result
+            results.append((path, classification, details['confidence_score']))
+            
+            # Count
+            if classification == "Real":
+                real_count += 1
+                status = "Real"
+            else:
+                synthetic_count += 1
+                status = "Fake" # Shorten for table
+                
+            # Metadata summary for table
+            meta = details.get('metadata', {})
+            meta_str = "No Data"
+            if meta.get('software') != "Unknown":
+                meta_str = f"Soft: {meta['software'][:15]}"
+            elif meta.get('camera') != "Unknown":
+                meta_str = f"Cam: {meta['camera'][:15]}"
+            
+            # Print row
+            print(f"{fname_display:<25} | {status:<10} | {details['detection_score']:.2f}  | {details['kurtosis']:<5.1f} | {details['coeff_variation']:<5.2f} | {details['high_freq_ratio']:<5.2f} | {details['eigenvalue_ratio']:<5.1f} | {meta_str:<20}")
+            
+            # Visualize if requested
+            if visualize:
+                save_visualization(path, details)
+                
+        except Exception as e:
+            error_count += 1
+            print(f"{fname_display:<25} | Error: {e}")
+
+    print("-" * 115)
     print("📊 SUMMARY")
-    print("=" * 60)
     print(f"   ✅ Real: {real_count}")
     print(f"   ⚠️  Synthetic: {synthetic_count}")
     if error_count:
         print(f"   ❌ Errors: {error_count}")
     print(f"   📷 Total: {len(image_files)}")
+    if visualize:
+        print(f"   📂 Visualizations saved to: visualization/")
 
 
 def main():
@@ -244,7 +290,7 @@ Examples:
 
     # Threshold arguments
     parser.add_argument('--th-cv', type=float, help='Threshold for Coefficient of Variation (default: 1.8)')
-    parser.add_argument('--th-kurt', type=float, help='Threshold for Kurtosis (default: 10.0)')
+    parser.add_argument('--th-kurt', type=float, help='Threshold for Kurtosis (default: 50.0)')
     parser.add_argument('--th-hf', type=float, help='Threshold for High-Freq Ratio (default: 0.45)')
     parser.add_argument('--th-ev-low', type=float, help='Threshold for Eigenvalue Ratio Low (default: 1.5)')
     parser.add_argument('--th-ev-high', type=float, help='Threshold for Eigenvalue Ratio High (default: 50.0)')
@@ -274,12 +320,15 @@ Examples:
     
     # Handle directory mode
     if args.dir:
-        analyze_directory(args.dir)
+        analyze_directory(args.dir, visualize=args.visualize, thresholds=thresholds)
         return
     
     # Handle single image
     if args.image:
-        # Auto-enable visualization for single image if matplotlib is available and not quiet
+        # Default to True for single image unless quiet is requested, 
+        # OR if user explicitly passed arg (which is False by default)
+        # We'll make it: if --visualize is NOT passed, check if we should auto-enable.
+        # But commonly we just want it ON by default for single image.
         visualize = True if args.visualize or not args.quiet else False
         analyze_single(args.image, verbose=not args.quiet, visualize=visualize, thresholds=thresholds)
         return

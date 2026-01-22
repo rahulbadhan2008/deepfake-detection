@@ -9,7 +9,7 @@ while diffusion-generated images exhibit unstable high-frequency structures from
 """
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ExifTags
 from typing import Tuple, Union
 import os
 
@@ -133,6 +133,87 @@ def analyze_gradient_pca(gradient_x: np.ndarray, gradient_y: np.ndarray) -> dict
     }
 
 
+def analyze_metadata(image: Image.Image) -> dict:
+    """
+    Analyze image metadata (EXIF) for signs of AI generation or Camera origin.
+    
+    Returns:
+        dict: {
+            'metadata_score': float (0.0=Real, 1.0=Fake, 0.5=Neutral),
+            'metadata_desc': str (Description of findings),
+            'software': str (Software tag software if present),
+            'camera': str (Make/Model if present)
+        }
+    """
+    score = 0.5  # Neutral start
+    desc = "No metadata found"
+    software = "Unknown"
+    camera = "Unknown"
+    
+    try:
+        # 1. Try Standard EXIF (JPEG/TIFF)
+        exif = image.getexif()
+        tags = {}
+        if exif:
+            # Tags of interest (Standard EXIF IDs)
+            # 305: Software, 271: Make, 272: Model, 306: DateTime
+            tags = {ExifTags.TAGS.get(k, k): v for k, v in exif.items()}
+        
+        # 2. Try image.info (PNG / WebP / PngInfo)
+        # This is CRITICAL for PNGs where getexif() often returns None
+        if hasattr(image, 'info'):
+            info = image.info
+            # Merge into tags if not present
+            if 'Software' not in tags and 'Software' in info:
+                tags['Software'] = info['Software']
+            
+            # Check for Stable Diffusion 'parameters' block (A1111 webui standard)
+            if 'parameters' in info:
+                tags['Software'] = "Stable Diffusion (parameters)"
+            
+            # Check for 'Comment' which often holds software info in some tools
+            if 'Comment' in info and isinstance(info['Comment'], str):
+                 # Try to extract software from comment if logical
+                 pass
+
+        if not tags:
+             return {'metadata_score': 0.5, 'metadata_desc': "No Data", 'software': software, 'camera': camera}
+
+        software = tags.get('Software', 'Unknown')
+        make = tags.get('Make', 'Unknown')
+        model = tags.get('Model', 'Unknown')
+        
+        # Check 1: AI Software signatures
+        ai_keywords = ['stable diffusion', 'midjourney', 'comfyui', 'dall-e', 'diffusers', 'automatic1111']
+        if any(keyword in str(software).lower() for keyword in ai_keywords):
+            score = 1.0
+            desc = f"AI Software detected: {software}"
+            return {'metadata_score': score, 'metadata_desc': desc, 'software': software, 'camera': camera}
+            
+        # Check 2: Camera signatures (Strong Real Indicator)
+        if make != 'Unknown' or model != 'Unknown':
+            camera = f"{make} {model}".strip()
+            score = 0.0
+            desc = f"Camera data found: {camera}"
+        
+        # Check 3: Editing Software (Neutral/Suspicious)
+        if 'photoshop' in str(software).lower() or 'gimp' in str(software).lower():
+            # Edited photos are neutral -> usually preserve Real status if structure is good
+            # But could be Edited Fake. We keep it 0.5 or slightly suspicious 0.6
+            score = 0.5
+            desc = f"Editing software: {software}"
+            
+    except Exception as e:
+        desc = f"Error reading metadata: {e}"
+        
+    return {
+        'metadata_score': score,
+        'metadata_desc': desc,
+        'software': software,
+        'camera': camera
+    }
+
+
 def detect_synthetic_image(
     image_input: Union[str, np.ndarray, Image.Image],
     return_details: bool = False,
@@ -203,7 +284,10 @@ def detect_synthetic_image(
     # Step 3: PCA analysis on gradient field
     metrics = analyze_gradient_pca(gradient_x, gradient_y)
     
-    # Step 4: Classification using interpretable thresholds
+    # Step 4: Metadata analysis
+    meta = analyze_metadata(image)
+    
+    # Step 5: Classification using interpretable thresholds
     # These thresholds are derived from the characteristic differences between
     # real photos (coherent gradients) and diffusion outputs (unstable high-freq patterns)
     
@@ -212,7 +296,7 @@ def detect_synthetic_image(
     # TUNED FOR PRODUCTION: Relaxed noise thresholds to avoid false positives on camera grain
     th = {
         'cv': 1.8,
-        'kurtosis': 10.0,       # Relaxed from 4.5
+        'kurtosis': 50.0,       # Relaxed from 10.0 (Real heavy-tail noise can be high)
         'hf': 0.45,             # Relaxed from 0.35
         'ev_low': 1.5,
         'ev_high': 50.0
@@ -221,7 +305,7 @@ def detect_synthetic_image(
         th.update(thresholds)
     
     # Scoring system based on WEIGHTED metrics (Total = 1.0)
-    # Priority: Structure (Physics) > Noise (Pixel Stats)
+    # Priority: Structure (Physics) > Metadata > Noise (Pixel Stats)
     score = 0.0
     
     # Metric 1: Coefficient of Variation (Weight: 0.20)
@@ -229,21 +313,29 @@ def detect_synthetic_image(
     if metrics['coeff_variation'] > th['cv']:
         score += 0.20
     
-    # Metric 2: Kurtosis of PCA projection (Weight: 0.20)
-    # Sensitive to noise - reduced weight
+    # Metric 2: Kurtosis of PCA projection (Weight: 0.15)
+    # Sensitive to noise - reduced weight further to accommodate metadata
     if metrics['kurtosis'] > th['kurtosis']:
-        score += 0.20
+        score += 0.15
     
-    # Metric 3: High-frequency energy ratio (Weight: 0.20)
+    # Metric 3: High-frequency energy ratio (Weight: 0.15)
     # Sensitive to ISO/Sharpening - reduced weight
     if metrics['high_freq_ratio'] > th['hf']:
-        score += 0.20
+        score += 0.15
     
-    # Metric 4: Eigenvalue Ratio (Weight: 0.40)
+    # Metric 4: Eigenvalue Ratio (Weight: 0.30)
     # ANISOTROPY: The strongest indicator of physical lighting.
-    # If this is normal, the image is very likely real, regardless of noise.
     if metrics['eigenvalue_ratio'] < th['ev_low'] or metrics['eigenvalue_ratio'] > th['ev_high']:
-        score += 0.40
+        score += 0.30
+        
+    # Metric 5: Metadata Score (Weight: 0.20)
+    # 0.0=Real (Camera), 1.0=Fake (AI Tag), 0.5=Neutral
+    # We penalize only if score > 0.5 (Fake) or reward if score < 0.5 (Real)
+    # Simplified: We add propotional score.
+    # If meta=1.0 (Fake), +0.20 to score.
+    # If meta=0.0 (Real), +0.00 to score.
+    # If meta=0.5 (Neutral), +0.10 to score (keep neutral)
+    score += meta['metadata_score'] * 0.20
     
     # Classification decision
     classification_threshold = 0.5
@@ -255,6 +347,7 @@ def detect_synthetic_image(
     if return_details:
         details = {
             **metrics,
+            'metadata': meta,
             'detection_score': score,
             'confidence_score': abs(score - 0.5) * 2,  # 0 to 1 confidence
             'thresholds': {
