@@ -57,8 +57,13 @@ def save_visualization(image_path, details, output_path=None):
         return
 
     if output_path is None:
-        base, _ = os.path.splitext(image_path)
-        output_path = f"{base}_analysis.png"
+        # Create visualization directory
+        vis_dir = "visualization"
+        if not os.path.exists(vis_dir):
+            os.makedirs(vis_dir)
+            
+        base = os.path.splitext(os.path.basename(image_path))[0]
+        output_path = os.path.join(vis_dir, f"{base}_analysis.png")
 
     try:
         # Create figure with 3 subplots
