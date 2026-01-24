@@ -82,6 +82,34 @@ We extract specific features that separate Real from Fake:
 
 > **Note:** The scoring system is **Weighted**. Structural metrics (Eigenvalue Ratio, CV) have higher priority than Noise metrics (Kurtosis, HF Ratio). This prevents noisy real photos (e.g., high ISO) from being misclassified as fake.
 
+> **Note:** The scoring system is **Weighted**. Structural metrics (Eigenvalue Ratio, CV) have higher priority than Noise metrics (Kurtosis, HF Ratio). This prevents noisy real photos (e.g., high ISO) from being misclassified as fake.
+
+## 📊 Visualization Logic
+
+When you run with `--visualize`, the system generates three diagnostic plots to help explain the decision.
+
+### 1. Original Image
+This is simply the reference input image.
+
+### 2. Luminance Gradient Field (Relief)
+**What it is:** A visualization of the raw gradient data, calculated as $G_x + G_y$.
+**Logic:**
+*   This represents the "texture structure" that the algorithm sees.
+*   **Real Images:** You should see clear physical lighting directions (e.g., shadows on one side of objects) and continuous edges.
+*   **Fake Images:** May look "mushy" or have inconsistent lighting directions that don't make physical sense.
+
+### 3. PCA Projection (Structural Anomalies)
+**What it is:** The most critical diagnostic tool. It projects the gradient of every pixel onto the first principal component (eigenvector).
+**Logic:**
+*   This map highlights the "noise floor" and structural consistency of the image.
+*   **Real Images (Consistent):** The projection map typically looks like a *ghost* of the original image. You can clearly see object boundaries. The background noise is uniform (camera sensor noise).
+*   **Fake Images (Unstable):** The projection map often reveals:
+    *   **High-frequency Snow:** Random, jagged noise that doesn't follow the image content.
+    *   **Dead Zones:** Areas of unnaturally flat gradients.
+    *   **Grid Artifacts:** Regular patterns left by the diffusion UNet's latent space processing.
+
+The **Kurtosis** metric essentially measures how "jagged" or "outlier-heavy" this PCA Projection map is. A high kurtosis in this map is a strong indicator of diffusion synthesis.
+
 ## 📂 File Structure
 
 *   `main.py`: **Entry Point**. Handles CLI arguments, file I/O, and user display.

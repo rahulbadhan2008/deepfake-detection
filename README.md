@@ -79,6 +79,16 @@ python main.py image.jpg --visualize
 ```
 This saves an image named `image_analysis.png` in the same folder.
 
+### 🧠 Interpreting the Graphs (Visual Guide)
+When you open the generated analysis image, look for **Plot 3 (PCA Projection)**:
+
+| What to look for | Status | Meaning |
+| :--- | :--- | :--- |
+| **Ghost-like Image** | ✅ **Real** | Structure follows the original image edges. Background noise is uniform. |
+| **"Snow" / Static** | ⚠️ **Fake** | High-frequency random noise that looks like TV static. |
+| **Grid Lines** | ⚠️ **Fake** | Faint tic-tac-toe or checkerboard patterns (often from the model's latent space). |
+| **Flat Dead Zones** | ⚠️ **Fake** | Large areas of zero detail where there should be texture. |
+
 ## ⚙️ Configuration
 You can fine-tune the detection sensitivity by adjusting the internal scoring thresholds via CLI arguments:
 
