@@ -117,6 +117,139 @@ def save_visualization(image_path, details, output_path=None):
         print(f"❌ Error saving visualization: {e}")
 
 
+def save_gradient_distribution_plot(image_path, details):
+    """Generate a Gradient Magnitude Distribution Plot (Log-Log)."""
+    if not HAS_MATPLOTLIB:
+        return
+
+    # Create analysis directory
+    analysis_dir = "analysis"
+    if not os.path.exists(analysis_dir):
+        os.makedirs(analysis_dir)
+        
+    base = os.path.splitext(os.path.basename(image_path))[0]
+    output_path = os.path.join(analysis_dir, f"{base}_gradient_dist.png")
+    
+    try:
+        # Get gradients
+        gx = details['gradient_x'].flatten()
+        gy = details['gradient_y'].flatten()
+        
+        # Calculate Magnitude
+        magnitude = np.sqrt(gx**2 + gy**2)
+        
+        # Sort descending (for rank-ordered plot)
+        sorted_indices = np.argsort(magnitude)[::-1]
+        sorted_magnitude = magnitude[sorted_indices]
+        
+        # Filter zero/near-zero values for Log plot
+        valid_mask = sorted_magnitude > 1e-6
+        sorted_magnitude = sorted_magnitude[valid_mask]
+        
+        # Create Rank vector (1 to N)
+        ranks = np.arange(1, len(sorted_magnitude) + 1)
+        
+        # Downsample for plotting performance (max 10k points)
+        if len(ranks) > 10000:
+            indices = np.linspace(0, len(ranks)-1, 10000).astype(int)
+            ranks = ranks[indices]
+            sorted_magnitude = sorted_magnitude[indices]
+            
+        # Plot
+        fig, ax = plt.subplots(figsize=(8, 6))
+        
+        # Classification color
+        score = details['detection_score']
+        classification = "Diffusion Generated" if score >= 0.5 else "Real"
+        color = 'red' if classification == 'Diffusion Generated' else 'green'
+        
+        # Log-Log Line Plot
+        ax.loglog(ranks, sorted_magnitude, color=color, linewidth=2, alpha=0.8, label=classification)
+        
+        ax.set_title(f"Gradient Magnitude Distribution (Log-Log)\n{os.path.basename(image_path)}", fontsize=14)
+        ax.set_xlabel("Rank (Log Scale)")
+        ax.set_ylabel("Gradient Magnitude (Log Scale)")
+        ax.grid(True, which="both", ls="--", alpha=0.3)
+        
+        # Add a reference "Perfect Power Law" line (1/x) for visual comparison
+        # Arbitrary intercept to match data scale roughly
+        ref_x = ranks
+        ref_y = sorted_magnitude[0] * (ranks[0] / ref_x) # y = k/x
+        ax.loglog(ref_x, ref_y, 'k--', alpha=0.3, label='Theoretical Natural 1/f')
+        
+        ax.legend()
+        
+        plt.figtext(0.5, 0.02, f"Result: {classification} (Score: {score:.2f})", 
+                    ha="center", fontsize=12, bbox={"facecolor":color, "alpha":0.2, "pad":5})
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=100, bbox_inches='tight')
+        plt.close(fig)
+        
+        print(f"   📈 Gradient Distribution Plot saved to: {output_path}")
+        
+    except Exception as e:
+        print(f"❌ Error saving distribution plot: {e}")
+
+
+def save_side_by_side(image_path, details):
+    """Generate a Side-by-Side (Neck-to-Neck) comparison."""
+    if not HAS_MATPLOTLIB:
+        return
+
+    # Create analysis directory
+    analysis_dir = "analysis"
+    if not os.path.exists(analysis_dir):
+        os.makedirs(analysis_dir)
+        
+    base = os.path.splitext(os.path.basename(image_path))[0]
+    output_path = os.path.join(analysis_dir, f"{base}_comparison.png")
+    
+    try:
+        # 1. Original Image
+        from PIL import Image
+        img = Image.open(image_path).convert('RGB')
+        
+        # 2. Anomaly Map
+        proj_map = details['projection_map']
+        anomaly_map = np.abs(proj_map)
+        
+        # Robust normalization (0-1)
+        vmax = np.percentile(anomaly_map, 99.5) 
+        anomaly_norm = np.clip(anomaly_map / (vmax + 1e-10), 0, 1)
+        
+        # Plot
+        fig, axes = plt.subplots(1, 2, figsize=(16, 8))
+        
+        # Left: Original
+        axes[0].imshow(img)
+        axes[0].set_title("Original Image", fontsize=16)
+        axes[0].axis('off')
+        
+        # Right: Anomaly Map
+        im = axes[1].imshow(anomaly_norm, cmap='inferno', vmin=0, vmax=1)
+        axes[1].set_title("Pixel Anomaly Analysis", fontsize=16)
+        axes[1].axis('off')
+        
+        # Classification Result
+        score = details['detection_score']
+        classification = "Diffusion Generated" if score >= 0.5 else "Real"
+        color = 'red' if classification == 'Diffusion Generated' else 'green'
+        
+        # Add visual classification banner
+        plt.suptitle(f"Analysis Result: {classification}\nScore: {score:.2f}", 
+                     fontsize=20, color='white', backgroundcolor=color) #, weight='bold')
+
+        plt.tight_layout(rect=[0, 0.03, 1, 0.90]) # Make room for suptitle
+        plt.savefig(output_path, dpi=100)
+        plt.close(fig)
+        
+        print(f"   🆚 Comparison Graph saved to: {output_path}")
+        
+    except Exception as e:
+        print(f"❌ Error saving comparison: {e}")
+
+
 def analyze_single(image_path, verbose=True, visualize=False, thresholds=None):
     """Analyze a single image."""
     if not os.path.exists(image_path):
@@ -151,6 +284,8 @@ def analyze_single(image_path, verbose=True, visualize=False, thresholds=None):
             
         if visualize:
             save_visualization(image_path, details)
+            save_gradient_distribution_plot(image_path, details)
+            save_side_by_side(image_path, details)
         
         return classification, details
         
@@ -220,9 +355,10 @@ def analyze_directory(dir_path, extensions=None, visualize=False, thresholds=Non
             # Print row
             print(f"{fname_display:<25} | {status:<10} | {details['detection_score']:.2f}  | {details['kurtosis']:<5.1f} | {details['coeff_variation']:<5.2f} | {details['high_freq_ratio']:<5.2f} | {details['eigenvalue_ratio']:<5.1f} | {meta_str:<20}")
             
-            # Visualize if requested
             if visualize:
                 save_visualization(path, details)
+                save_gradient_distribution_plot(path, details)
+                save_side_by_side(path, details)
                 
         except Exception as e:
             error_count += 1

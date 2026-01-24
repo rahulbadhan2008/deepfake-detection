@@ -86,29 +86,29 @@ We extract specific features that separate Real from Fake:
 
 ## 📊 Visualization Logic
 
-When you run with `--visualize`, the system generates three diagnostic plots to help explain the decision.
+## 📊 Visualization Logic
 
-### 1. Original Image
-This is simply the reference input image.
+The system generates advanced diagnostic plots to explain the decision-making process.
 
-### 2. Luminance Gradient Field (Relief)
-**What it is:** A visualization of the raw gradient data, calculated as $G_x + G_y$.
+### 1. Pixel Anomaly Heatmap (PCA Projection)
+**What it is:** A visualization of the structural deviation of every pixel from the expected "natural" gradient covariance.
 **Logic:**
-*   This represents the "texture structure" that the algorithm sees.
-*   **Real Images:** You should see clear physical lighting directions (e.g., shadows on one side of objects) and continuous edges.
-*   **Fake Images:** May look "mushy" or have inconsistent lighting directions that don't make physical sense.
+*   We calculate the absolute projection of each pixel onto the first principal component.
+*   **Result:**
+    *   **Real Images:** Have low anomaly scores (dark blue/black) that follow the edges of objects. This is because real edges align with the principal gradient direction.
+    *   **Fake Images:** Have high anomaly scores (bright red/yellow) that appear as "snow", "static", or "grid lines". This reveals where the diffusion model failed to generate coherent gradients.
 
-### 3. PCA Projection (Structural Anomalies)
-**What it is:** The most critical diagnostic tool. It projects the gradient of every pixel onto the first principal component (eigenvector).
+### 2. Gradient Distribution (Power Law Analysis)
+**What it is:** A Log-Log plot of sorted gradient magnitudes.
 **Logic:**
-*   This map highlights the "noise floor" and structural consistency of the image.
-*   **Real Images (Consistent):** The projection map typically looks like a *ghost* of the original image. You can clearly see object boundaries. The background noise is uniform (camera sensor noise).
-*   **Fake Images (Unstable):** The projection map often reveals:
-    *   **High-frequency Snow:** Random, jagged noise that doesn't follow the image content.
-    *   **Dead Zones:** Areas of unnaturally flat gradients.
-    *   **Grid Artifacts:** Regular patterns left by the diffusion UNet's latent space processing.
+*   **Natural Image Statistics:** Real-world images adhere to a strict **Power Law (1/f)** distribution. This means a straight line on a Log-Log plot.
+*   **Diffusion Artifacts:** AI models tend to be "too smooth" or "clipped". They fail to produce the extreme tails of the gradient distribution found in nature.
+*   **Interpretation:**
+    *   **Straight Line:** Indicates statistical naturalness (Real).
+    *   **Curved/Bent Line:** Indicates artificial generation (Fake).
 
-The **Kurtosis** metric essentially measures how "jagged" or "outlier-heavy" this PCA Projection map is. A high kurtosis in this map is a strong indicator of diffusion synthesis.
+### 3. Side-by-Side Comparison
+The "Neck-to-Neck" view places the Original Image next to its Anomaly Heatmap, allowing for direct correlation between image content and detected anomalies.
 
 ## 📂 File Structure
 

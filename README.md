@@ -77,17 +77,31 @@ You can generate visual charts of the analysis (Gradient Map, PCA Projection) us
 ```bash
 python main.py image.jpg --visualize
 ```
-This saves an image named `image_analysis.png` in the same folder.
+This saves multiple analysis images in the `analysis/` folder:
+1.  `*_comparison.png`: Side-by-Side "Neck-to-Neck" view.
+2.  `*_gradient_dist.png`: Gradient Magnitude Distribution (Log-Log).
+
+### ⚔️ Comparison Report (Head-to-Head)
+To generate a detailed forensic comparison between a specific Real and Fake image:
+
+```bash
+python compare.py --real path/to/real.jpg --fake path/to/fake.jpg
+```
+This generates `comparison_report.png` in the current directory.
 
 ### 🧠 Interpreting the Graphs (Visual Guide)
-When you open the generated analysis image, look for **Plot 3 (PCA Projection)**:
 
+#### 1. Pixel Anomaly Comparison (Heatmap)
 | What to look for | Status | Meaning |
 | :--- | :--- | :--- |
-| **Ghost-like Image** | ✅ **Real** | Structure follows the original image edges. Background noise is uniform. |
-| **"Snow" / Static** | ⚠️ **Fake** | High-frequency random noise that looks like TV static. |
-| **Grid Lines** | ⚠️ **Fake** | Faint tic-tac-toe or checkerboard patterns (often from the model's latent space). |
-| **Flat Dead Zones** | ⚠️ **Fake** | Large areas of zero detail where there should be texture. |
+| **Dark / "Ghost"** | ✅ **Real** | Deviations are low and follow edges. |
+| **Bright Red / "Lava"** | ⚠️ **Fake** | High anomaly scores across the image. |
+
+#### 2. Gradient Distribution (Log-Log Plot)
+| Shape | Status | Meaning |
+| :--- | :--- | :--- |
+| **Straight Line** | ✅ **Real** | Follows natural 1/f Power Law statistics. |
+| **Curved / Drop-off** | ⚠️ **Fake** | Lacks high-frequency natural gradients (denoising artifact). |
 
 ## ⚙️ Configuration
 You can fine-tune the detection sensitivity by adjusting the internal scoring thresholds via CLI arguments:
