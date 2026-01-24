@@ -127,6 +127,3 @@ pip uninstall Pillow
 pip install Pillow --upgrade
 ```
 
-## 📝 License
-
-MIT License
